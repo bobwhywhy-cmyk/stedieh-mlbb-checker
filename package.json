@@ -1,0 +1,6 @@
+{
+  "name": "stedieh-mlbb-checker",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Stedieh MLBB ID checker using EliteDias /checkid"
+}

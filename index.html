@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Stedieh MLBB ID Checker</title>
+  <style>
+    :root{
+      --bg:#08101d; --card:#111a2b; --card2:#0c1424; --line:#26334c;
+      --text:#f4f7fb; --muted:#9aa8bd; --cyan:#27c2ff; --green:#27e3a2; --red:#ff6278;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; min-height:100vh; font-family:Arial,Helvetica,sans-serif; color:var(--text);
+      background:
+        radial-gradient(circle at 80% 10%,rgba(39,194,255,.14),transparent 30%),
+        radial-gradient(circle at 10% 90%,rgba(39,227,162,.10),transparent 28%),
+        var(--bg);
+      display:flex; align-items:center; justify-content:center; padding:22px;
+    }
+    .wrap{width:100%;max-width:560px}
+    .brand{text-align:center;margin-bottom:16px}
+    .brand h1{margin:0;font-size:36px;letter-spacing:-1px}
+    .brand p{margin:7px 0 0;color:var(--muted)}
+    .card{
+      background:rgba(17,26,43,.96);border:1px solid var(--line);border-radius:22px;
+      padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.35)
+    }
+    .pill{display:inline-block;padding:7px 10px;border-radius:999px;
+      border:1px solid rgba(39,227,162,.25);background:rgba(39,227,162,.08);
+      color:#a7ffe0;font-size:12px;font-weight:800;margin-bottom:15px}
+    h2{margin:0 0 8px;font-size:25px}
+    .sub{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:18px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    label{display:block;font-size:13px;font-weight:800;margin:10px 0 7px}
+    input{
+      width:100%;padding:14px 15px;border-radius:13px;border:1px solid var(--line);
+      background:var(--card2);color:var(--text);font-size:16px;outline:none
+    }
+    input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(39,194,255,.12)}
+    button{
+      width:100%;margin-top:18px;padding:15px;border:0;border-radius:13px;
+      font-size:16px;font-weight:900;cursor:pointer;color:#03141a;
+      background:linear-gradient(90deg,var(--cyan),var(--green))
+    }
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .result{display:none;margin-top:16px;padding:14px 15px;border-radius:13px;line-height:1.45}
+    .loading{display:block;background:rgba(39,194,255,.08);border:1px solid rgba(39,194,255,.24)}
+    .ok{display:block;background:rgba(39,227,162,.08);border:1px solid rgba(39,227,162,.25)}
+    .bad{display:block;background:rgba(255,98,120,.08);border:1px solid rgba(255,98,120,.25)}
+    .name{font-size:23px;font-weight:900;margin-top:5px;word-break:break-word}
+    details{margin-top:14px;color:var(--muted);font-size:12px}
+    pre{
+      white-space:pre-wrap;word-break:break-word;background:#080d17;border:1px solid var(--line);
+      border-radius:10px;padding:10px;color:#c6d0df;max-height:220px;overflow:auto
+    }
+    .note{margin-top:14px;color:var(--muted);font-size:12px;line-height:1.5}
+    @media(max-width:520px){.grid{grid-template-columns:1fr}.card{padding:20px}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="brand">
+      <h1>Stedieh</h1>
+      <p>Mobile Legends ID Checker</p>
+    </div>
+
+    <section class="card">
+      <div class="pill">MLBB • EliteDias validation</div>
+      <h2>Check account</h2>
+      <div class="sub">Enter the MLBB User ID and Server / Zone ID.</div>
+
+      <div class="grid">
+        <div>
+          <label for="userid">User ID</label>
+          <input id="userid" inputmode="numeric" placeholder="e.g. 83414542">
+        </div>
+        <div>
+          <label for="serverid">Server / Zone ID</label>
+          <input id="serverid" inputmode="numeric" placeholder="e.g. 2163">
+        </div>
+      </div>
+
+      <button id="btn">Check ID</button>
+      <div id="result" class="result"></div>
+
+      <details>
+        <summary>Technical details</summary>
+        <pre id="debug">No request yet.</pre>
+      </details>
+
+      <div class="note">
+        This version first uses the Netlify Function. If the function is missing, it also tries the EliteDias endpoint directly and shows the exact error in Technical details.
+      </div>
+    </section>
+  </main>
+
+<script>
+const btn = document.getElementById("btn");
+const result = document.getElementById("result");
+const debug = document.getElementById("debug");
+const uid = document.getElementById("userid");
+const sid = document.getElementById("serverid");
+
+function esc(v){
+  return String(v ?? "")
+    .replaceAll("&","&amp;").replaceAll("<","&lt;")
+    .replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
+}
+function show(cls, html){ result.className="result "+cls; result.innerHTML=html; }
+function setDebug(obj){ debug.textContent = typeof obj === "string" ? obj : JSON.stringify(obj,null,2); }
+
+async function parseResponse(res){
+  const text = await res.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch(e) {}
+  return {status:res.status, ok:res.ok, text, data};
+}
+
+async function tryNetlify(userid, serverid){
+  const res = await fetch("/.netlify/functions/checkid",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({userid,serverid})
+  });
+  return await parseResponse(res);
+}
+
+async function tryDirect(userid, serverid){
+  const res = await fetch("https://api.elitedias.com/checkid",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({game:"mlbb",userid,serverid})
+  });
+  return await parseResponse(res);
+}
+
+function handleApiData(source, r){
+  const d = r.data || {};
+  setDebug({source, http_status:r.status, response:d || r.text});
+
+  if (String(d.code) === "200" && d.username){
+    show("ok","✅ Account found<div class='name'>"+esc(d.username)+"</div>");
+    return true;
+  }
+
+  if (d.message){
+    show("bad","❌ "+esc(d.message));
+    return true;
+  }
+  return false;
+}
+
+async function check(){
+  const userid = uid.value.trim();
+  const serverid = sid.value.trim();
+
+  if(!userid || !serverid){
+    show("bad","❌ Please enter both User ID and Server / Zone ID.");
+    return;
+  }
+  if(!/^\d+$/.test(userid) || !/^\d+$/.test(serverid)){
+    show("bad","❌ Numbers only.");
+    return;
+  }
+
+  btn.disabled=true;
+  btn.textContent="Checking...";
+  show("loading","Checking account...");
+  setDebug("Starting request...");
+
+  try{
+    // First: recommended server-side call
+    try{
+      const r = await tryNetlify(userid,serverid);
+      if(r.status !== 404 && handleApiData("Netlify Function",r)) return;
+      setDebug({source:"Netlify Function",http_status:r.status,response:r.data || r.text,notice:"Trying EliteDias directly..."});
+    }catch(e){
+      setDebug({source:"Netlify Function",error:String(e),notice:"Trying EliteDias directly..."});
+    }
+
+    // Fallback: direct browser call (works only if EliteDias allows CORS)
+    try{
+      const r2 = await tryDirect(userid,serverid);
+      if(handleApiData("Direct EliteDias fallback",r2)) return;
+      show("bad","❌ EliteDias returned an unexpected response. Open Technical details below.");
+    }catch(e2){
+      setDebug({
+        error:"Both methods failed",
+        direct_error:String(e2),
+        likely_reason:"Netlify Function is not deployed, and the browser is blocked from calling EliteDias directly (CORS)."
+      });
+      show("bad","❌ Checker could not reach EliteDias. Open Technical details below.");
+    }
+
+  } finally {
+    btn.disabled=false;
+    btn.textContent="Check ID";
+  }
+}
+
+btn.addEventListener("click",check);
+[uid,sid].forEach(el=>el.addEventListener("keydown",e=>{if(e.key==="Enter")check()}));
+</script>
+</body>
+</html>
